@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import './customer.css';
+import './onboarding.css';
 
 type View = 'intro' | 'customer' | 'manager' | 'status';
 type ManagerTab = 'dashboard' | 'orders' | 'tables' | 'menu' | 'analytics';
@@ -21,6 +22,7 @@ const initialProducts: Product[] = [
 const euro = (cents: number) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 
 export default function Home() {
+  const [tourStep, setTourStep] = useState<number | null>(0);
   const [view, setView] = useState<View>('intro');
   const [products, setProducts] = useState(initialProducts);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -102,6 +104,7 @@ export default function Home() {
   function reset() {
     setProducts(initialProducts); setManagerTab('dashboard'); setAssistance([]); setStaffOpen(false);
     setCart([]); setOrders([]); setSelected(null); setCartOpen(false); setCheckout(false); setLastOrder(null); setToast('Demo ripristinata');
+    setTourStep(0);
     navigate('intro');
   }
 
@@ -116,6 +119,8 @@ export default function Home() {
     setAssistance([{id:801,reason:'Posate / tovaglioli',resolved:false}]);
     setManagerTab('dashboard'); setToast('Serata simulata: ordini e sala sono live'); navigate('manager');
   }
+
+  if (tourStep !== null) return <OnboardingTour step={tourStep} onStep={setTourStep} onComplete={() => setTourStep(null)} />;
 
   return <main className={view === 'manager' ? 'app manager-bg' : 'app'}>
     <header className="nav-shell">
@@ -134,6 +139,61 @@ export default function Home() {
     {staffOpen && <div className="overlay" onClick={() => setStaffOpen(false)}><section className="bottom-sheet" onClick={(event) => event.stopPropagation()}><button className="close" onClick={() => setStaffOpen(false)}>×</button><p className="label">TAVOLO 14</p><h2>Chiama lo staff</h2><p className="muted">La richiesta apparirà subito nella vista operativa.</p><div className="reason-list">{['Acqua','Posate / tovaglioli','Problema con l’ordine','Ho bisogno di assistenza'].map(reason=><button key={reason} onClick={()=>{setAssistance(current=>[{id:Date.now(),reason,resolved:false},...current]);setStaffOpen(false);setToast('Richiesta inviata allo staff')}}>{reason}<span>→</span></button>)}</div></section></div>}
     {toast && <div className="toast" role="status">{toast}</div>}
   </main>;
+}
+
+const tourContent = [
+  {
+    eyebrow: 'PIÙ SECONDI GIRI',
+    title: 'Il tavolo ordina.\nTu non perdi il momento.',
+    copy: 'Dal QR al pagamento in pochi tap: il cliente riordina quando ne ha voglia, anche durante il pienone.',
+    visual: 'order',
+  },
+  {
+    eyebrow: 'MENO CAOS AL BAR',
+    title: 'La comanda arriva\ngià chiara e pagata.',
+    copy: 'Tavolo, quantità e modifiche compaiono subito nel flusso operativo. Lo staff prepara, non rincorre informazioni.',
+    visual: 'kds',
+  },
+  {
+    eyebrow: 'CONTROLLO LIVE',
+    title: 'La serata scorre.\nTu vedi tutto.',
+    copy: 'Ordini, tavoli e disponibilità restano sincronizzati: più controllo nei picchi, senza togliere umanità al servizio.',
+    visual: 'control',
+  },
+] as const;
+
+function OnboardingTour({ step, onStep, onComplete }: { step: number; onStep: (step: number) => void; onComplete: () => void }) {
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const content = tourContent[step];
+  const next = () => step === tourContent.length - 1 ? onComplete() : onStep(step + 1);
+  const previous = () => step > 0 && onStep(step - 1);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowRight' || event.key === 'Enter') next();
+      if (event.key === 'ArrowLeft') previous();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
+  return <main className={`onboarding onboarding-${content.visual}`} onTouchStart={(event) => setTouchStart(event.touches[0].clientX)} onTouchEnd={(event) => { if (touchStart === null) return; const distance = event.changedTouches[0].clientX - touchStart; if (distance < -55) next(); if (distance > 55) previous(); setTouchStart(null); }}>
+    <header className="onboarding-top"><div className="onboarding-brand">Ordin<span>Ai</span></div><span>Demo per il gestore</span></header>
+    <section className="onboarding-stage" aria-live="polite">
+      <TourVisual type={content.visual} />
+      <div className="onboarding-copy"><p>{content.eyebrow}</p><h1>{content.title.split('\n').map((line) => <span key={line}>{line}</span>)}</h1><div className="onboarding-caption">{content.copy}</div></div>
+    </section>
+    <footer className="onboarding-footer">
+      <div className="tour-progress" aria-label={`Passaggio ${step + 1} di ${tourContent.length}`}>{tourContent.map((_, index) => <button key={index} className={index === step ? 'active' : ''} onClick={() => onStep(index)} aria-label={`Vai al passaggio ${index + 1}`} aria-current={index === step ? 'step' : undefined} />)}</div>
+      <div className="tour-actions">{step > 0 && <button className="tour-back" onClick={previous}>Indietro</button>}<button className="tour-next" onClick={next}>{step === tourContent.length - 1 ? 'Inizia la demo' : 'Continua'} <span>→</span></button></div>
+    </footer>
+  </main>;
+}
+
+function TourVisual({ type }: { type: typeof tourContent[number]['visual'] }) {
+  if (type === 'order') return <div className="tour-visual order-visual" aria-label="Un cliente aggiunge un secondo giro dal tavolo"><div className="tour-phone"><header><b>Ordin<span>Ai</span></b><i>Tavolo 14</i></header><p>IL PROSSIMO GIRO</p><h2>Cosa ti va?</h2><div className="mini-product coral"><em>🍹</em><div><b>Negroni Sbagliato</b><small>Bitter, vermouth, bollicine</small></div><strong>12 €</strong></div><div className="mini-product lime"><em>🌊</em><div><b>Mare Alto</b><small>Gin, bergamotto, basilico</small></div><div className="mini-stepper"><i>−</i><b>2</b><i>+</i></div></div><button>2 articoli · 28 € <span>Ordina →</span></button></div><div className="tour-badge"><b>+1 giro</b><span>senza attese</span></div></div>;
+  if (type === 'kds') return <div className="tour-visual kds-visual" aria-label="La comanda pagata arriva al bar"><div className="flow-source"><span>T14</span><div><b>Ordine inviato</b><small>Pagamento confermato</small></div><i>✓</i></div><div className="flow-line"><i/><span>LIVE</span></div><article className="tour-ticket"><header><span>ORDINE #25</span><b>ADESSO</b></header><h2>Tavolo 14</h2><div><b>2× Negroni Sbagliato</b><small>+ Vermouth Riserva</small></div><div><b>1× Hummus della Casa</b></div><button>♨ Inizia preparazione</button></article></div>;
+  return <div className="tour-visual control-visual" aria-label="Dashboard live con ordini, tavoli e disponibilità"><div className="control-shell"><header><div><p>GIOVEDÌ · APERICENA</p><h2>Buon servizio.</h2></div><span>● LIVE</span></header><div className="control-metrics"><article><small>Incasso oggi</small><b>3.260 €</b><i>↗ 14%</i></article><article><small>Ordini</small><b>177</b><i>73% QR</i></article></div><div className="control-bottom"><article><small>SALA</small><b>18 / 24 tavoli</b><div>{[4,8,12,14,18].map((table) => <i key={table} className={table === 14 ? 'attention' : ''}>T{table}</i>)}</div></article><article className="availability"><small>DISPONIBILITÀ</small><span>Negroni <b>ON</b></span><span>Mare Alto <b>ON</b></span></article></div></div></div>;
 }
 
 function Intro({ onCustomer, onManager, onSimulate }: { onCustomer: () => void; onManager: () => void; onSimulate: () => void }) {
